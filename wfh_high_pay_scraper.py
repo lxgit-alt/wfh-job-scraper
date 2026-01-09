@@ -2,6 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import random
 import re
+import time
 
 # --- CONFIGURATION ---
 KEYWORDS = ["customer support", "AI writing", "Outlier", "DataAnnotation", "Data Entry"]
@@ -10,20 +11,50 @@ MAX_HOURLY = 40.0
 
 def parse_hourly_rate(text):
     """Extracts hourly numbers from strings like '$25/hr' or 'Up to $40 per hour'"""
-    # Look for patterns like $25, 25/hr, 25 per hour
-    matches = re.findall(r'\$?(\d+(?:\.\d+)?)', text)
+    # Fix: Remove commas before regex to handle numbers like 50,000
+    clean_text = text.replace(',', '')
+    matches = re.findall(r'\$?(\d+(?:\.\d+)?)', clean_text)
+    
     if not matches:
         return None
     
-    # Check if the context is hourly
     text_lower = text.lower()
-    if "hour" in text_lower or "/hr" in text_lower or "hrly" in text_lower:
-        val = float(matches[0])
-        # If it's a range like 15-25, matches[0] is 15. We'll take the first number.
-        return val
+    val = float(matches[0])
     
-    # If it's a yearly salary (e.g. 50,000), convert to hourly (~2000 hours/year)
+    if any(x in text_lower for x in ["hour", "/hr", "hrly"]):
+        return val
     elif "year" in text_lower or "annually" in text_lower:
-        val = float(matches[0].replace(',', ''))
-        if val > 1000: # Sanity check for yearly
-            return val
+        if val > 1000: 
+            return val / 2000  # Convert annual to hourly
+    return val
+
+# --- NEW CODE TO "ACCESS" THE LIBRARIES ---
+
+def fetch_jobs(url):
+    """
+    This function uses requests, BeautifulSoup, and random
+    to clear the 'not accessed' warnings.
+    """
+    # Use 'random' to pick a random delay (mimics human behavior)
+    delay = random.uniform(1, 3)
+    time.sleep(delay)
+
+    # Use 'requests' to get the webpage
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        response = requests.get(url, headers=headers)
+        
+        # Use 'BeautifulSoup' to parse the HTML
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        print(f"Success! Accessed: {soup.title.string if soup.title else url}")
+        return soup
+
+    except Exception as e:
+        print(f"Error accessing {url}: {e}")
+        return None
+
+if __name__ == "__main__":
+    # Example usage
+    test_url = "https://www.google.com"
+    fetch_jobs(test_url)
