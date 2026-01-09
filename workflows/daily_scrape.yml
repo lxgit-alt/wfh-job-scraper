@@ -1,0 +1,43 @@
+name: Daily WFH Job Scrape
+
+on:
+  schedule:
+    - cron: '0 13 * * *' # Runs daily at 1 PM UTC
+  workflow_dispatch: # Allows manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+
+      - name: Run Proxy Tester and Scraper
+        run: |
+          python fast_us_proxies.py
+          python wfh_high_pay_scraper.py
+
+      - name: Send Results to Discord
+        if: success()
+        uses: tsickert/discord-webhook-action@v1
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK }}
+          content: "🚀 **Daily WFH Job Report Found!** Check the attached CSV for high-paying roles ($10-$40/hr)."
+          filename: wfh_leads.csv
+
+      - name: Commit and Push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Updated High Pay Jobs List"
+          file_pattern: 'wfh_leads.csv fast_us_proxies.txt'

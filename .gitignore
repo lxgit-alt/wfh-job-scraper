@@ -1,0 +1,3 @@
+__pycache__/
+*.pyc
+# We only want to track the scripts, not the changing data
