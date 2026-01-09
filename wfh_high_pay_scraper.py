@@ -19,7 +19,7 @@ TARGETS = [
 ]
 
 MIN_PAY = 10.0
-MAX_PAY = 65.0
+MAX_PAY = 70.0
 
 def parse_salary(text):
     hr_pattern = r'\$?(\d{1,2}(?:\.\d{2})?)\s?(?:/hr|per hour|hourly)'
@@ -35,7 +35,6 @@ def parse_salary(text):
     return None
 
 def is_remote(text):
-    """Filters for explicit remote keywords."""
     remote_keywords = [r'remote', r'worldwide', r'anywhere', r'wfh', r'work from home', r'distributed']
     pattern = '|'.join(remote_keywords)
     return bool(re.search(pattern, text, re.IGNORECASE))
@@ -48,13 +47,14 @@ def run_scraper():
     results = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(
+        # SWITCHED TO FIREFOX for better proxy stability
+        browser = p.firefox.launch(
             headless=True,
             proxy={"server": proxy_server, "username": proxy_user, "password": proxy_pass}
         )
         
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0",
             viewport={'width': 1920, 'height': 1080}
         )
         
@@ -62,10 +62,26 @@ def run_scraper():
             page = context.new_page()
             print(f"📡 Scanning: {target['name']}")
             
-            try:
-                page.goto(target['url'], wait_until="networkidle", timeout=60000)
-                time.sleep(5) 
+            # RETRY LOGIC (Try each site 3 times)
+            success = False
+            for attempt in range(1, 4):
+                try:
+                    # Increased timeout to 90s to account for proxy lag
+                    page.goto(target['url'], wait_until="domcontentloaded", timeout=90000)
+                    time.sleep(7) # Extra breath for content to load
+                    success = True
+                    break
+                except Exception as e:
+                    print(f"   ⚠️ Attempt {attempt} failed for {target['name']}: {str(e)[:40]}...")
+                    time.sleep(5)
 
+            if not success:
+                print(f"❌ Skipping {target['name']} after 3 attempts.")
+                page.close()
+                continue
+
+            try:
+                # Handle "Load More"
                 if target['button']:
                     try:
                         btn = page.locator(target['button']).first
@@ -81,23 +97,25 @@ def run_scraper():
                 seen_jobs = set()
 
                 for el in elements:
-                    text = el.inner_text().strip()
-                    if not text or len(text) < 10: continue
-                    
-                    pay_found = parse_salary(text)
-                    # New Filter: Must have pay AND mention 'Remote/Worldwide'
-                    if pay_found and is_remote(text):
-                        job_title = text.split('\n')[0][:70].strip()
-                        if job_title not in seen_jobs:
-                            results.append({
-                                "Site": target['name'],
-                                "Job": job_title,
-                                "Pay": f"${pay_found:.2f}/hr",
-                                "Link": target['url'] 
-                            })
-                            seen_jobs.add(job_title)
+                    try:
+                        text = el.inner_text().strip()
+                        if not text or len(text) < 10: continue
+                        
+                        pay_found = parse_salary(text)
+                        if pay_found and is_remote(text):
+                            job_title = text.split('\n')[0][:70].strip()
+                            if job_title not in seen_jobs:
+                                results.append({
+                                    "Site": target['name'],
+                                    "Job": job_title,
+                                    "Pay": f"${pay_found:.2f}/hr",
+                                    "Link": target['url'] 
+                                })
+                                seen_jobs.add(job_title)
+                    except:
+                        continue
             except Exception as e:
-                print(f"❌ Error on {target['name']}: {str(e)[:50]}")
+                print(f"❌ Content error on {target['name']}: {str(e)[:50]}")
             finally:
                 page.close()
         
@@ -109,6 +127,8 @@ def run_scraper():
             writer.writeheader()
             writer.writerows(results)
         print(f"📊 Report Generated: {len(results)} remote jobs found.")
+    else:
+        print("Empty results. No matching jobs found today.")
 
 if __name__ == "__main__":
     run_scraper()
