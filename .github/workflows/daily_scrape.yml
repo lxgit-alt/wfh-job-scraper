@@ -2,8 +2,8 @@ name: Daily WFH Job Scrape
 
 on:
   schedule:
-    - cron: '0 13 * * *' # Runs daily at 1 PM UTC
-  workflow_dispatch: # Allows manual trigger
+    - cron: '0 13 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -30,11 +30,12 @@ jobs:
 
       - name: Send Results to Discord
         if: success()
-        uses: tsickert/discord-webhook-action@v1
-        with:
-          webhook-url: ${{ secrets.DISCORD_WEBHOOK }}
-          content: "🚀 **Daily WFH Job Report Found!** Check the attached CSV for high-paying roles ($10-$40/hr)."
-          filename: wfh_leads.csv
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          curl -F "file=@wfh_leads.csv" \
+               -F "content=🚀 **Daily WFH Job Report Found!** Check the attached CSV for high-paying roles ($10-$40/hr)." \
+               $DISCORD_WEBHOOK
 
       - name: Commit and Push changes
         uses: stefanzweifel/git-auto-commit-action@v5
