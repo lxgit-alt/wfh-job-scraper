@@ -2,8 +2,8 @@ name: Daily WFH Job Scrape
 
 on:
   schedule:
-    - cron: '0 13 * * *' # Runs daily
-  workflow_dispatch: # Manual trigger
+    - cron: '0 13 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -25,9 +25,11 @@ jobs:
           pip install requests beautifulsoup4 playwright
           playwright install chromium
 
-      - name: Run Proxy Tester and Scraper
+      - name: Run Proxy Tester and Scrapers
         run: |
+          # Step 1: Find working US Proxies
           python fast_us_proxies.py
+          # Step 2: Search job boards and take screenshots
           python wfh_high_pay_scraper.py
 
       - name: Send Reports to Discord
@@ -35,15 +37,25 @@ jobs:
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-          echo "Sending screenshots to Discord..."
+          echo "Checking for files to send to Discord..."
+          
+          # Send the CSV if it exists
+          if [ -f "wfh_leads.csv" ]; then
+            curl -F "file=@wfh_leads.csv" -F "content=🚀 **Daily WFH Job Report Found!**" $DISCORD_WEBHOOK
+          else
+            echo "No wfh_leads.csv found, skipping."
+          fi
+
+          # Send Screenshots
           for file in *.png; do
             if [ -f "$file" ]; then
-              curl -F "file=@$file" -F "content=📸 **Job Board Update:** ${file%.*}" $DISCORD_WEBHOOK
+              curl -F "file=@$file" -F "content=📸 **Job Board Status:** ${file%.*}" $DISCORD_WEBHOOK
             fi
           done
 
       - name: Commit and Push changes
+        if: always()
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Updated Job Boards and Screenshots"
-          file_pattern: 'fast_us_proxies.txt *.png'
+          commit_message: "Updated Job Boards, CSV, and Screenshots"
+          file_pattern: 'fast_us_proxies.txt wfh_leads.csv *.png'
