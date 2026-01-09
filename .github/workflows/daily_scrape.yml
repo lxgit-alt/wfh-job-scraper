@@ -25,31 +25,29 @@ jobs:
           pip install requests beautifulsoup4 playwright
           playwright install chromium
 
-      - name: Run Proxy Tester and Scrapers
+      - name: Run Proxy Tester and Scraper
         run: |
-          # Step 1: Find working US Proxies
           python fast_us_proxies.py
-          # Step 2: Search job boards and take screenshots
           python wfh_high_pay_scraper.py
 
-      - name: Send Reports to Discord
+      - name: Send Results to Discord
         if: always()
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-          echo "Checking for files to send to Discord..."
-          
-          # Send the CSV if it exists
+          # 1. Send the Job Leads CSV
           if [ -f "wfh_leads.csv" ]; then
-            curl -F "file=@wfh_leads.csv" -F "content=🚀 **Daily WFH Job Report Found!**" $DISCORD_WEBHOOK
-          else
-            echo "No wfh_leads.csv found, skipping."
+            curl -F "file=@wfh_leads.csv" \
+                 -F "content=🚀 **Daily High-Pay Report ($10-$50/hr)**" \
+                 $DISCORD_WEBHOOK
           fi
 
-          # Send Screenshots
+          # 2. Send all 5 screenshots
           for file in *.png; do
             if [ -f "$file" ]; then
-              curl -F "file=@$file" -F "content=📸 **Job Board Status:** ${file%.*}" $DISCORD_WEBHOOK
+              curl -F "file=@$file" \
+                   -F "content=📸 **Site Update:** ${file%.*}" \
+                   $DISCORD_WEBHOOK
             fi
           done
 
