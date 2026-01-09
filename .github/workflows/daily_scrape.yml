@@ -2,8 +2,8 @@ name: Daily WFH Job Scrape
 
 on:
   schedule:
-    - cron: '0 13 * * *'
-  workflow_dispatch:
+    - cron: '0 13 * * *' # Runs daily
+  workflow_dispatch: # Manual trigger
 
 permissions:
   contents: write
@@ -21,24 +21,29 @@ jobs:
           python-version: '3.9'
 
       - name: Install dependencies
-        run: pip install requests beautifulsoup4
+        run: |
+          pip install requests beautifulsoup4 playwright
+          playwright install chromium
 
       - name: Run Proxy Tester and Scraper
         run: |
           python fast_us_proxies.py
           python wfh_high_pay_scraper.py
 
-      - name: Send Results to Discord
-        if: success()
+      - name: Send Reports to Discord
+        if: always()
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-          curl -F "file=@wfh_leads.csv" \
-               -F "content=🚀 **Daily WFH Job Report Found!** Check the attached CSV for high-paying roles ($10-$40/hr)." \
-               $DISCORD_WEBHOOK
+          echo "Sending screenshots to Discord..."
+          for file in *.png; do
+            if [ -f "$file" ]; then
+              curl -F "file=@$file" -F "content=📸 **Job Board Update:** ${file%.*}" $DISCORD_WEBHOOK
+            fi
+          done
 
       - name: Commit and Push changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Updated High Pay Jobs List"
-          file_pattern: 'wfh_leads.csv fast_us_proxies.txt'
+          commit_message: "Updated Job Boards and Screenshots"
+          file_pattern: 'fast_us_proxies.txt *.png'

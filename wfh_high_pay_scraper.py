@@ -1,60 +1,57 @@
-import requests
-from bs4 import BeautifulSoup
+import os
 import random
-import re
 import time
+from playwright.sync_api import sync_playwright
 
-# --- CONFIGURATION ---
-KEYWORDS = ["customer support", "AI writing", "Outlier", "DataAnnotation", "Data Entry"]
-MIN_HOURLY = 10.0
-MAX_HOURLY = 40.0
+# --- CONFIG ---
+TARGETS = [
+    {"name": "Outlier", "url": "https://outlier.ai/experts/"},
+    {"name": "DataAnnotation", "url": "https://www.dataannotation.tech/"},
+    {"name": "Remotive", "url": "https://remotive.com/remote-jobs/customer-support"},
+    {"name": "WorkingNomads", "url": "https://www.workingnomads.com/jobs?category=customer-support"},
+    {"name": "Alignerr", "url": "https://www.alignerr.com/"}
+]
 
-def parse_hourly_rate(text):
-    """Extracts hourly numbers from strings like '$25/hr' or 'Up to $40 per hour'"""
-    # Fix: Remove commas before regex to handle numbers like 50,000
-    clean_text = text.replace(',', '')
-    matches = re.findall(r'\$?(\d+(?:\.\d+)?)', clean_text)
-    
-    if not matches:
-        return None
-    
-    text_lower = text.lower()
-    val = float(matches[0])
-    
-    if any(x in text_lower for x in ["hour", "/hr", "hrly"]):
-        return val
-    elif "year" in text_lower or "annually" in text_lower:
-        if val > 1000: 
-            return val / 2000  # Convert annual to hourly
-    return val
-
-# --- NEW CODE TO "ACCESS" THE LIBRARIES ---
-
-def fetch_jobs(url):
-    """
-    This function uses requests, BeautifulSoup, and random
-    to clear the 'not accessed' warnings.
-    """
-    # Use 'random' to pick a random delay (mimics human behavior)
-    delay = random.uniform(1, 3)
-    time.sleep(delay)
-
-    # Use 'requests' to get the webpage
-    headers = {"User-Agent": "Mozilla/5.0"}
+def get_proxy():
     try:
-        response = requests.get(url, headers=headers)
-        
-        # Use 'BeautifulSoup' to parse the HTML
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        print(f"Success! Accessed: {soup.title.string if soup.title else url}")
-        return soup
+        with open("fast_us_proxies.txt", "r") as f:
+            proxies = [line.strip() for line in f if line.strip()]
+            return random.choice(proxies) if proxies else None
+    except: return None
 
-    except Exception as e:
-        print(f"Error accessing {url}: {e}")
-        return None
+def run_scraper():
+    proxy_server = get_proxy()
+    if not proxy_server:
+        print("No US proxies found! Run proxy tester first.")
+        return
+
+    with sync_playwright() as p:
+        # Launch browser with US Proxy to bypass geo-blocks
+        browser = p.chromium.launch(headless=True, proxy={"server": f"http://{proxy_server}"})
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+        )
+        
+        for target in TARGETS:
+            page = context.new_page()
+            print(f"Checking {target['name']}...")
+            
+            try:
+                # Navigate and wait for content
+                page.goto(target['url'], wait_until="networkidle", timeout=60000)
+                time.sleep(5) # Extra wait for JS elements
+                
+                # Take the screenshot for Discord proof
+                screenshot_path = f"{target['name']}_jobs.png"
+                page.screenshot(path=screenshot_path, full_page=False)
+                print(f"✅ Captured {target['name']}")
+                
+            except Exception as e:
+                print(f"❌ Failed {target['name']}: {e}")
+            finally:
+                page.close()
+        
+        browser.close()
 
 if __name__ == "__main__":
-    # Example usage
-    test_url = "https://www.google.com"
-    fetch_jobs(test_url)
+    run_scraper()
