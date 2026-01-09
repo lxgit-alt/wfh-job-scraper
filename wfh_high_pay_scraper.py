@@ -18,18 +18,23 @@ TARGETS = [
     {"name": "DailyRemote", "url": "https://dailyremote.com/remote-ai-jobs", "button": None}
 ]
 
+# STRICT PAY RANGE
 MIN_PAY = 10.0
-MAX_PAY = 70.0
+MAX_PAY = 40.0
 
 def parse_salary(text):
+    """Detects hourly rates and annual k-salaries, filtering for $10-$40 range."""
     hr_pattern = r'\$?(\d{1,2}(?:\.\d{2})?)\s?(?:/hr|per hour|hourly)'
     yr_pattern = r'\$?(\d{2,3})[kK]'
+    
     hr_match = re.findall(hr_pattern, text, re.IGNORECASE)
     if hr_match:
         val = float(hr_match[0])
         return val if MIN_PAY <= val <= MAX_PAY else None
+        
     yr_match = re.findall(yr_pattern, text)
     if yr_match:
+        # Convert annual $k to hourly (e.g., 80k / 2000 hrs = $40/hr)
         val = (float(yr_match[0]) * 1000) / 2000
         return val if MIN_PAY <= val <= MAX_PAY else None
     return None
@@ -39,6 +44,26 @@ def is_remote(text):
     pattern = '|'.join(remote_keywords)
     return bool(re.search(pattern, text, re.IGNORECASE))
 
+def auto_scroll(page):
+    """Scrolls the page to trigger lazy-loaded content."""
+    page.evaluate("""
+        async () => {
+            await new Promise((resolve) => {
+                let totalHeight = 0;
+                let distance = 100;
+                let timer = setInterval(() => {
+                    let scrollHeight = document.body.scrollHeight;
+                    window.scrollBy(0, distance);
+                    totalHeight += distance;
+                    if(totalHeight >= scrollHeight || totalHeight > 5000){
+                        clearInterval(timer);
+                        resolve();
+                    }
+                }, 100);
+            });
+        }
+    """)
+
 def run_scraper():
     proxy_server = "http://142.111.48.253:7030"
     proxy_user = os.getenv("PROXY_USER")
@@ -47,7 +72,6 @@ def run_scraper():
     results = []
 
     with sync_playwright() as p:
-        # SWITCHED TO FIREFOX for better proxy stability
         browser = p.firefox.launch(
             headless=True,
             proxy={"server": proxy_server, "username": proxy_user, "password": proxy_pass}
@@ -62,32 +86,32 @@ def run_scraper():
             page = context.new_page()
             print(f"📡 Scanning: {target['name']}")
             
-            # RETRY LOGIC (Try each site 3 times)
             success = False
             for attempt in range(1, 4):
                 try:
-                    # Increased timeout to 90s to account for proxy lag
                     page.goto(target['url'], wait_until="domcontentloaded", timeout=90000)
-                    time.sleep(7) # Extra breath for content to load
+                    # Scroll to trigger lazy loading
+                    auto_scroll(page)
+                    time.sleep(5) 
                     success = True
                     break
                 except Exception as e:
-                    print(f"   ⚠️ Attempt {attempt} failed for {target['name']}: {str(e)[:40]}...")
+                    print(f"   ⚠️ Attempt {attempt} failed: {str(e)[:40]}")
                     time.sleep(5)
 
             if not success:
-                print(f"❌ Skipping {target['name']} after 3 attempts.")
                 page.close()
                 continue
 
             try:
-                # Handle "Load More"
+                # Handle "Load More" button if present
                 if target['button']:
                     try:
                         btn = page.locator(target['button']).first
                         if btn.is_visible(timeout=5000):
                             btn.click()
                             time.sleep(3)
+                            auto_scroll(page) # Scroll again after clicking
                     except:
                         pass
 
@@ -126,9 +150,9 @@ def run_scraper():
             writer = csv.DictWriter(f, fieldnames=["Site", "Job", "Pay", "Link"])
             writer.writeheader()
             writer.writerows(results)
-        print(f"📊 Report Generated: {len(results)} remote jobs found.")
+        print(f"📊 Report Generated: {len(results)} remote jobs found between $10-$40/hr.")
     else:
-        print("Empty results. No matching jobs found today.")
+        print("Empty results. No matching jobs in the $10-$40 range found today.")
 
 if __name__ == "__main__":
     run_scraper()
