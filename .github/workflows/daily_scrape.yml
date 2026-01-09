@@ -9,51 +9,46 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  scrape:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.10'
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
-          pip install requests beautifulsoup4 playwright
+          pip install playwright requests
           playwright install chromium
 
-      - name: Run Proxy Tester and Scraper
-        run: |
-          python fast_us_proxies.py
-          python wfh_high_pay_scraper.py
+      - name: Run Scraper
+        env:
+          # Your Premium Proxy Credentials
+          PROXY_USER: "muchzrvn"
+          PROXY_PASS: "iypbhjpq6psl"
+        run: python wfh_high_pay_scraper.py
 
-      - name: Send Results to Discord
+      - name: Upload to Discord
         if: always()
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-          # 1. Send the Job Leads CSV
           if [ -f "wfh_leads.csv" ]; then
-            curl -F "file=@wfh_leads.csv" \
-                 -F "content=🚀 **Daily High-Pay Report ($10-$50/hr)**" \
-                 $DISCORD_WEBHOOK
+            curl -F "file=@wfh_leads.csv" -F "content=📈 **New High-Pay WFH Jobs Found**" $DISCORD_WEBHOOK
           fi
-
-          # 2. Send all 5 screenshots
-          for file in *.png; do
-            if [ -f "$file" ]; then
-              curl -F "file=@$file" \
-                   -F "content=📸 **Site Update:** ${file%.*}" \
-                   $DISCORD_WEBHOOK
+          for img in *.png; do
+            if [ -f "$img" ]; then
+              curl -F "file=@$img" -F "content=📸 Site Preview: ${img%_jobs.png}" $DISCORD_WEBHOOK
             fi
           done
 
-      - name: Commit and Push changes
+      - name: Git Commit and Push
         if: always()
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Updated Job Boards, CSV, and Screenshots"
-          file_pattern: 'fast_us_proxies.txt wfh_leads.csv *.png'
+          commit_message: "Scrape Update: $(date +'%Y-%m-%d')"
+          file_pattern: 'wfh_leads.csv *.png'
